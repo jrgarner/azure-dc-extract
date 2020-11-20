@@ -2,6 +2,16 @@
   "IsEncrypted": false,
   "Values": {
     "FUNCTIONS_WORKER_RUNTIME": "python",
-    "AzureWebJobsStorage": ""
-  }
+    "AzureWebJobsStorage": "DefaultEndpointsProtocol=https;AccountName=linuxfunctionssa;AccountKey=xsXIy6t9eQOwOwu+b4FYwreUaSsu2aH+fIAhRljDTsUjT0Z1YNbV40TGLbKQde6BBzqgeWT2IMzoS8igFGAAmg==;EndpointSuffix=core.windows.net",
+    "AI_CONNECTION_STRING": "InstrumentationKey=36f81bfb-5512-4e8e-8520-329316e9bdef;IngestionEndpoint=https://eastus-0.in.applicationinsights.azure.com/",
+    "APPLICATIONINSIGHTS_CONNECTION_STRING": "InstrumentationKey=36f81bfb-5512-4e8e-8520-329316e9bdef;IngestionEndpoint=https://eastus-0.in.applicationinsights.azure.com/",
+    "CATALOG_FILENAME": "catalog.csv",
+    "DC_CONNECTION_STRING": "DefaultEndpointsProtocol=https;AccountName=jrgdatacatalogsa;AccountKey=Cw9WoAdYSgPNT+DIeT+OxLWnkLOSubTCAyErKmG9CBENmiv2HEWrmyt1Tf97ofrApSIvIPOUSFHI7m2csldD6g==;EndpointSuffix=core.windows.net",
+    "DC_TABLE_NAME": "DSCTSDatalakeCatalog",
+    "FS_CONNECTION_STRING": "DefaultEndpointsProtocol=https;AccountName=coreservicessa;AccountKey=I6tS7cGaE8RqCBTwOk65+m1dPznWTXFRNRl8B9ccUcbsFEaxmLeNeRxchO+3myg2mo/Qn4STJUyZDZMbeCDmYg==;EndpointSuffix=core.windows.net",
+    "FUNCTIONS_EXTENSION_VERSION": "~3",
+    "LOGGER_LEVEL": "DEBUG",
+    "SHARE_NAME": "data-catalog"
+  },
+  "ConnectionStrings": {}
 }
