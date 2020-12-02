@@ -1,3 +1,11 @@
+# setup sys.path to allow import from folder included in package
+# NOTE only add when running in Azure
+import sys
+import os
+modules_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+modules_path = modules_path + "/modules"
+#sys.path.insert(0, modules_path)
+
 from azure.data.tables import TableClient
 from azure.storage.fileshare import ShareFileClient
 from opencensus.ext.azure.log_exporter import AzureLogHandler
@@ -6,14 +14,11 @@ import azure.functions as func
 import csv
 import datetime
 import logging
-import os
-import sys
 import tempfile
 
 # global variables
 DC_CONNECTION_STRING = "NOTSET"
 FS_CONNECTION_STRING = "NOTSET"
-AI_CONNECTION_STRING = "NOTSET"
 DC_TABLE_NAME = "NOTSET"
 LOGGER_LEVEL = "NOTSET"
 CATALOG_FILENAME = "NOTSET"
@@ -74,12 +79,11 @@ def extract_catalog_data(logger):
 			logger.error("Failed to remove existing catalog file (%s)...", local_file)
 			logger.error("ERROR: " + str(sys.exc_info()[0]))
 			return None
-
 	# connect to table
 	logger.info("Connecting to DataCatalog table (%s), connect string (%s)", DC_TABLE_NAME, DC_CONNECTION_STRING)
 	try:
 		table_client = TableClient.from_connection_string(conn_str=DC_CONNECTION_STRING, table_name=DC_TABLE_NAME)
-	except NameError as err:
+	except (NameError | HttpResponseError | ServiceRequestError | ServiceResponseError) as err:
 		logger.error("Failed to connect to Data Catalog table (%s), exiting...", DC_TABLE_NAME)
 		logger.error("ERROR: " + str(err))
 		return None
@@ -94,14 +98,17 @@ def extract_catalog_data(logger):
 	entites = "NOTSET"
 	logger.info("Reading table entries (%s)", DC_TABLE_NAME)
 	try:
-		entities = table_client.query_entities(filter=TABLE_FILTER)
+		entities = table_client.query_entities(filter=TABLE_FILTER, results_per_page=100)
+	except HttpResponseError as err:
+		logger.error("Failed to retrieve Data Catalog entries (%s), exiting...", DC_TABLE_NAME)
+		logger.error("ERROR: " + str(err))
+		return None
 	except:
-		logger.error("Failed to read Data Catalog table (%s) extries, exiting...", DC_TABLE_NAME)
+		logger.error("Failed to retrieve Data Catalog entries (%s), exiting...", DC_TABLE_NAME)
 		logger.error("ERROR: " + str(sys.exc_info()[0]))
 		return None
 
 	# open local file
-	logger.info("Opening local file (%s)...", local_file)
 	try:
 		csvfile = open(local_file, "w")
 	except:
@@ -129,7 +136,6 @@ def extract_catalog_data(logger):
 		return None
    
 	# write header row
-	logger.info("Writing header row...")
 	row = ['Data Source', 'Description', 'Data Generator', 'Source POC', 'Source Container', 'POC Contact Info', 'Soure URI', 'Data Owner', 'Retention (Hot)', 'Retention (Cool)', 'Retention (Delete)', 'Sensitivity', 'TimeStamp']
 
 	try:
@@ -140,11 +146,9 @@ def extract_catalog_data(logger):
 		logger.error("ERROR: %s", str(err))
 		return None
 
-	logger.info("RV:" + str(entities))
 	# build/write to CSV file
 	rows_written = 0
-	logger.info("Writing rows...")
-	logger.info("***(%s)***", entities)
+	logger.info("Looping through rows...")
 	for entity in entities:
 		logger.info("IN LOOP...")
 		logger.info("ENTRY: (%s)", str(entity))
@@ -152,6 +156,7 @@ def extract_catalog_data(logger):
 			logger.info("Building row!")
 			# build CSV row.
 			try:
+				logger.info("Building row!")
 				row = []
 				row.append(str(entity.data_source.value))
 				row.append(str(entity.description.value))
@@ -170,8 +175,8 @@ def extract_catalog_data(logger):
 				logger.error("Failed to build row for data source (%s), exiting...", entity.data_source.value)
 				logger.error("ERROR: %s", str(err))
 				return None
-   
-			logger.info("Building row!")
+  
+			logger.info("Writimg row!")
 			try:
 				catalog_writer.writerow(row)
 				rows_written = rows_written + 1
@@ -184,15 +189,8 @@ def extract_catalog_data(logger):
 	return local_file
 
 def get_environment(logger):
-	global LOGGER_LEVEL, DC_CONNECTION_STRING, FS_CONNECTION_STRING, AI_CONNECTION_STRING
+	global LOGGER_LEVEL, DC_CONNECTION_STRING, FS_CONNECTION_STRING
 	global SHARE_NAME, DC_TABLE_NAME, CATALOG_FILENAME
-
-	# link logger to AI
-	AI_CONNECTION_STRING = os.getenv("AI_CONNECTION_STRING", "NOTSET")
-	logger.info("AI_CONNECTION_STRING (%s)", AI_CONNECTION_STRING)
-	if AI_CONNECTION_STRING == "NOTSET":
-		logger.error("No AI_CONNECTION_STRING provided, exiting...")
-		return -1
 
 	# get passed LOGGER_LEVEL value and update logger
 	LOGGER_LEVEL = os.getenv("LOGGER_LEVEL", "NOTSET")
@@ -253,7 +251,7 @@ def get_environment(logger):
 	return 0
 
 def main(mytimer: func.TimerRequest) -> None:
-	global LOGGER_LEVEL, DC_CONNECTION_STRING, FS_CONNECTION_STRING, AI_CONNECTION_STRING
+	global LOGGER_LEVEL, DC_CONNECTION_STRING, FS_CONNECTION_STRING
 	global SHARE_NAME, DC_TABLE_NAME, CATALOG_FILENAME
 
 	# initialize logger
@@ -267,6 +265,7 @@ def main(mytimer: func.TimerRequest) -> None:
 
 	if get_environment(logger) != 0:
 		logger.info("dc-extract: Failed to get all required environment valiables")
+		sys.exit(1)
 	else:
 		logger.info("dc-extract: All required environment valiables collected")
 
@@ -277,10 +276,9 @@ def main(mytimer: func.TimerRequest) -> None:
 			logger.info("(%s) local filename returned", local_filename)
 			if upload_file(local_filename, logger):
 				logger.info("Sucessfully uploaded Data Catalog file (%s)", local_filename)
-
-				# success!!!
-				logger.info("Success!")
 			else:
 				logger.error("Failed to upload data catalog file (%s), exiting...", local_filename)
+				sys.exit(1)
 		else:
 			logger.info("dc-extract: Failed to extract data catalog information")
+			sys.exit(1)
