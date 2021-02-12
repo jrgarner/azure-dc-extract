@@ -1,20 +1,15 @@
-# setup sys.path to allow import from folder included in package
-# NOTE only add when running in Azure
 import sys
 import os
-modules_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-modules_path = modules_path + "/modules"
-#sys.path.insert(0, modules_path)
+import logging
+import csv
+import datetime
+import tempfile
 
 from azure.data.tables import TableClient
 from azure.storage.fileshare import ShareFileClient
 from opencensus.ext.azure.log_exporter import AzureLogHandler
 
 import azure.functions as func
-import csv
-import datetime
-import logging
-import tempfile
 
 # global variables
 DC_CONNECTION_STRING = "NOTSET"
@@ -61,6 +56,36 @@ def upload_file(filename, logger):
 	logger.info("File successfully uploaded (%s)", filename)
 	return True
 
+def get_table_data(connection_string, name, filter, logger):
+	# connect to table
+	table_service ="NOTSET"
+	logger.info("Connecting to DataCatalog table (%s), connect string (%s)", name, connection_string)
+	try:
+		table_client = TableClient.from_connection_string(conn_str=connection_string, table_name=name)
+	except:
+		logger.error("Failed to connect to Data Catalog table (%s), exiting...", name)
+		logger.error("ERROR: " + str(sys.exc_info()[0]))
+		return None
+
+	logger.info("Connected to table")
+
+	# read entries
+	entities = "NOTSET"
+	logger.info("Reading table entries (%s)", name)
+	try:
+		entities = table_client.list_entities(results_per_page=100, select="*")
+	except:
+		logger.error("Failed to retrieve Data Catalog entries (%s), exiting...", name)
+		logger.error("ERROR: " + str(sys.exc_info()[0]))
+		return None
+
+	if entities == "NOTSET":
+		logger.error("No entries read from Data Catalog table (%s), exiting...", name)
+		return None
+	else:
+		logger.error("Catalog entries retrieved from Data Catalog table (%s)", name)
+		return entities
+
 def extract_catalog_data(logger):
 	global DC_TABLE_NAME, DC_CONNECTION_STRING, TABLE_FILTER
 
@@ -79,33 +104,10 @@ def extract_catalog_data(logger):
 			logger.error("Failed to remove existing catalog file (%s)...", local_file)
 			logger.error("ERROR: " + str(sys.exc_info()[0]))
 			return None
-	# connect to table
-	logger.info("Connecting to DataCatalog table (%s), connect string (%s)", DC_TABLE_NAME, DC_CONNECTION_STRING)
-	try:
-		table_client = TableClient.from_connection_string(conn_str=DC_CONNECTION_STRING, table_name=DC_TABLE_NAME)
-	except (NameError | HttpResponseError | ServiceRequestError | ServiceResponseError) as err:
-		logger.error("Failed to connect to Data Catalog table (%s), exiting...", DC_TABLE_NAME)
-		logger.error("ERROR: " + str(err))
-		return None
-	except:
-		logger.error("Failed to connect to Data Catalog table (%s), exiting...", DC_TABLE_NAME)
-		logger.error("ERROR: " + str(sys.exc_info()[0]))
-		return None
 
-	# read entries
-	# JRG - Add exceptions...
-	# JRG - Will ev entually need to add in paging logic as catalog table grows
-	entites = "NOTSET"
-	logger.info("Reading table entries (%s)", DC_TABLE_NAME)
-	try:
-		entities = table_client.query_entities(filter=TABLE_FILTER, results_per_page=100)
-	except HttpResponseError as err:
-		logger.error("Failed to retrieve Data Catalog entries (%s), exiting...", DC_TABLE_NAME)
-		logger.error("ERROR: " + str(err))
-		return None
-	except:
-		logger.error("Failed to retrieve Data Catalog entries (%s), exiting...", DC_TABLE_NAME)
-		logger.error("ERROR: " + str(sys.exc_info()[0]))
+	# get table entites
+	entities = get_table_data(DC_CONNECTION_STRING,DC_TABLE_NAME, TABLE_FILTER,logger)
+	if entities == None:
 		return None
 
 	# open local file
@@ -192,6 +194,7 @@ def get_environment(logger):
 	global LOGGER_LEVEL, DC_CONNECTION_STRING, FS_CONNECTION_STRING
 	global SHARE_NAME, DC_TABLE_NAME, CATALOG_FILENAME
 
+	logger.info("Getting environment variables...")
 	# get passed LOGGER_LEVEL value and update logger
 	LOGGER_LEVEL = os.getenv("LOGGER_LEVEL", "NOTSET")
 	logger.info("LOGGER_LEVEL (%s)", LOGGER_LEVEL)
@@ -253,6 +256,10 @@ def get_environment(logger):
 def main(mytimer: func.TimerRequest) -> None:
 	global LOGGER_LEVEL, DC_CONNECTION_STRING, FS_CONNECTION_STRING
 	global SHARE_NAME, DC_TABLE_NAME, CATALOG_FILENAME
+
+	# set packages path
+	packages_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".python_packages")
+	sys.path.append(packages_path)
 
 	# initialize logger
 	logger = logging.getLogger(__name__)
